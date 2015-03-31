@@ -1,7 +1,7 @@
 # stats216.ps3
 
 This project contains the R code, RMarkdown code, a copy of the problem set to provide context for relevant questions, and
-an html file for easy viewing of results. Most of the R code is prsented in the html file.
+an html file for easy viewing of results. Most of the R code is also presented in the html file.
 
 See Questions 3 and 4 for code and results:
 
