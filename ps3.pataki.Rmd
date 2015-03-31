@@ -1,0 +1,425 @@
+---
+title: 'Stats 216: Problem Set 3'
+author: "Nicholas J. Pataki"
+date: "February 22, 2015"
+output: html_document
+---
+
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      warning=FALSE, message=FALSE)
+```
+
+```{r setup,  echo=FALSE}
+options(digits=3)
+library(MASS)
+library(graphics)
+library(boot)
+library(splines)
+attach(Boston)
+boston=Boston
+log.crim=log(boston$crim)
+medv=boston$medv
+library(pls)
+library(leaps)
+setwd("~/Downloads/")
+load("body.Rdata")
+```
+
+#Question1
+
+When lamda approaches infinity the penalty term for roughness becomes so large that the function g(x) is forced to be smooth everywhere relative to the order of the derivative contained in the penalty term. It’s helpful for me to think about this from the simplest case and then work our way up. Let m = the order of derivative contined in the penalty term and I'll use the Boston data set from the ISLR libary as a visual aid.
+
+When lamda approaches infinity for:
+
+m=0 then the 0th derivative is forced to zero, i.e. g(x)=0 so we have no degrees of freedom and can’t fit to the data at all. 
+
+m=1 then the 1st derivative is forced to zero, i.e. the slope of the function will be zero. We are therefore free to choose some intercept that will minimize the loss function but we have no latitude over the slope. So the fitted form is just a horizontal line where g(x) = y_bar.
+
+
+``` {r q1a, echo=FALSE}
+plot(log.crim, medv, ylim = c(0, max(medv))) 
+abline(h=mean(medv), lwd=2, col="blue")
+```
+
+
+m=2 then the 2nd derivative is forced to zero, i.e. the slope is constant but nonzero and we have two degress of freedom. g(x) is a one-degree polynomial that minimizes the residual sum of squares. This would result in the least squares linear regression solution.
+
+
+``` {r q1b, echo=FALSE}
+plot(log.crim, medv, ylim = c(0, max(medv))) 
+abline(lm(medv~log.crim,data=boston), lwd=2, col="blue") 
+```
+
+
+m=3 then the 3rd derivative is forced to zero. The solution will be least squares on a quadratic form, i.e. a second-degree polynomial.
+
+
+``` {r q1c, echo=FALSE}
+fit = lm(medv~poly(log.crim,2),data=Boston)
+log.crim.lims=range(log.crim)
+log.crim.grid = seq(from=log.crim.lims[1], to=log.crim.lims[2])
+preds = predict(fit,newdata=list(log.crim=log.crim.grid),se=TRUE)
+se.bands=cbind(preds$fit + 2*preds$se.fit, preds$fit - 2*preds$se.fit)
+par(mfrow=c(1,1),mar=c(4.5,4.5,1,1) ,oma=c(0,0,4,0))
+plot(log.crim,medv,xlim=log.crim.lims ,cex=.5,col="darkgrey")
+lines(log.crim.grid,preds$fit,lwd=2,col="blue")
+matlines(log.crim.grid,se.bands,lwd=1,col="blue",lty=3)
+```
+
+
+m=4 then the 4th derivative is forced to zero, The solution will be least squares on a cubic form, i.e. a third degree polynomial.
+
+
+``` {r q1d, echo=FALSE}
+fit = lm(medv~poly(log.crim,3),data=Boston)
+log.crim.lims=range(log.crim)
+log.crim.grid = seq(from=log.crim.lims[1], to=log.crim.lims[2])
+preds = predict(fit,newdata=list(log.crim=log.crim.grid),se=TRUE)
+se.bands=cbind(preds$fit + 2*preds$se.fit, preds$fit - 2*preds$se.fit)
+par(mfrow=c(1,1),mar=c(4.5,4.5,1,1) ,oma=c(0,0,4,0))
+plot(log.crim,medv,xlim=log.crim.lims ,cex=.5,col="darkgrey")
+lines(log.crim.grid,preds$fit,lwd=2,col="blue")
+matlines(log.crim.grid,se.bands,lwd=1,col="blue",lty=3)
+```
+
+
+Given this, for g1hat (m=3) and g2hat (m=4):
+        
+a. g2hat is more flexible than g1hat. It can more closely follow the training observations and therefore g2hat will have smaller training RSS. It reduces bias but of course with a price paid in variance. 
+
+b. g2hat may be prone to overfitting given its flexibility relative to g1hat but this depends on the true functional form that the data take on. Therefore it's unclear which of the two models will have lower test RSS. If the data were better approximated by a cubic function g1hat would perform more poorly than g2hat with respect to test RSS. If the data were better approximated by a quadratic function g1hat would perform better than g2hat with respect to test RSS. 
+
+c. When lamda = 0 there is no penalty term and g1hat = g2hat therefore we’d expect them to have the same training and test RSS since they are the same optimiaztion problem.
+\pagebreak
+
+#Question 2
+
+For each of the three approaches we are considering a sequence of models with k=0 up through k=p predictors. 
+
+a. Without more information is impossible to answer this question definitively. As I explain below best subset is guaranteed to return the p+1 models with the lowest training RSS for each level of k=0 through k=p predictors. However training RSS is a notoriously poor estimator of test RSS. It’s entirely possible that the best subset returns a model which fits the test data well, while forward and backwards stepwise selection return a slightly different set of p+1 models and the one chosen from among those perform poorly on the test data. The opposite is possible as well. 
+
+b.  A full model where k=p will have the lowest training RSS and this will be the same for all three approaches. If we arbitrarily choose a level of k and compare across methods then best subset is guaranteed to have the lowest training RSS but we could not make the same claim about forward and backwards stepwise selection. In order to reduce the computational price of best subset, forward stepwise selection keeps the predictor which gives the greatest additional improvement at each level of k. Backwards stepwise selection iteratively removes the least useful predictor. They are therefore not guaranteed to find the best possible model out of all the 2^p models containing subsests of the p predictors.  
+
+For example, if the best model where k=1 contains X1 but the best model where k=3 contains X2 and X3, forward selection would miss the best model where k=3 since it retains X1 as it works its way forward. We could construct a similar example for backwards stepwise selection. Best subset considers (p choose k) models at each level of k and is exhaustive so it is guaranteed to find the model with lowest training RSS for every approach with k predictors.
+
+c.i. False. Let {X1,X2, X3, X4}  be our predictors and thus p=4. Let the best model chosen by forward stepwise when k=2 be {X1 & X2}. It is entirely possible that when backwards stepwise moves from the full model to one where it considers k+1=3 predictors that it eliminates either X1 or X2 from the model. In this case the predictors of the 2-variable model chosen by forward stepwise will not be a subset of the predictors of the 3-variable model chosen by backwards stepwise selection. The T/F statement does not hold true for all possible cases. 
+
+c.ii. False. Let {X1,X2, X3, X4, X5}  be our predictors and thus p=5. If the best model chosen by forward stepwise when k+1=3 is {X3, X4, X5} but the best model chosen by backwards stepwise when k=2 is {X1,X2} then the predictors identified by backwards stepwise are not a subset of the predictors identified by forward stepwise. The T/F statement does not hold true for all possible cases. 
+
+c.iii. False. Let {X1,X2, X3, X4, X5} be our predictors and thus p=5. It’s possible that when k=2 best subset identifies {X1, X2} as the best model but when k=3 it identifies {X3,X4,X5} as the best model. This could be due to correlation among variables and is a result of best subset considering all (p choose k) models at every level of k=0 up through k=p. The T/F statement does not hold true for all possible cases. 
+
+c.iv. True. Backwards stepwise iteratively removes the predictor which is the least useful at each level of k, starting where k=p and decrementing k by 1 for each round through k=0. Each set of predictors in the (k-1)-variable model will therefore be a subset of the predictors at the k-variable model. 
+
+c.v.  True. Forwards stepwise iteratively adds the predictor which is the most useful at each level of k, starting where k=0 and incrementing k by 1 for each round through k=p. Each set of predictors in the k-variable model will therefore be a subset of the predictors at the (k+1)-variable model. 
+\pagebreak
+
+#Question 3
+
+[I worked with Jose Ignacio del Villar Ortiz Mena and Erik Zahnlecker on Q3 and Q4]
+
+dis = the weighted mean of distances to five Boston employment centers (predictor)
+nox = nitrogen oxides concentration in parts per ten million (response)
+
+a.
+``` {r q3a1, echo=TRUE}
+fit = lm(nox~ poly(dis,3),data=Boston)
+summary(fit)
+```
+
+\pagebreak
+
+``` {r q3a2, echo=TRUE}
+dis.lims=range(dis)
+dis.grid = seq(from=dis.lims[1], to=dis.lims[2])
+preds = predict(fit,newdata=list(dis=dis.grid),se=TRUE)
+se.bands=cbind(preds$fit + 2*preds$se.fit, preds$fit - 2*preds$se.fit)
+par(mfrow=c(1,1),mar=c(4.5,4.5,1,1) ,oma=c(0,0,4,0))
+plot(dis,nox,xlim=dis.lims ,cex=.5,col="darkgrey")
+title("Degree -3 Polynomial ",outer=T)
+lines(dis.grid,preds$fit,lwd=2,col="blue")
+matlines(dis.grid,se.bands,lwd=1,col="blue",lty=3)
+```
+
+\pagebreak
+
+b.
+
+``` {r q3b1, echo=TRUE}
+dis.lims=range(dis)
+dis.grid = seq(from=dis.lims[1], to=dis.lims[2])
+par(mfrow=c(1,1),mar=c(4.5,4.5,1,1) ,oma=c(0,0,4,0))
+plot(dis,nox,xlim=dis.lims ,cex=.5,col="darkgrey")
+title("i-th Degree Polynomial ",outer=T)
+names = seq(1:10)
+col = rainbow(10)
+residuals = c()
+for (i in 1:10){
+        fit = lm(nox~ poly(dis,i),data=Boston)
+        preds = predict(fit,newdata=list(dis=dis.grid),se=TRUE)
+        residuals = c(residuals,deviance(fit))
+        lines(dis.grid,preds$fit,lwd=2,col=col[i])
+}
+legend("topright",legend=names,lty=c(1,1), col=col)
+plot(seq(from=1, to=10),residuals, type="o",xlab="polynomial degrees",ylab="training rss")
+```
+\pagebreak
+
+c.
+``` {r q3c1, echo=TRUE}
+set.seed(17)
+names=seq(1:10)
+cv.error=rep(0,10)
+for (i in 1:10) {
+        glm.fit=glm(nox~poly(dis,i,raw=TRUE),data=Boston)
+        cv.error[i]=cv.glm(Boston,glm.fit,K=10)$delta[1]
+}
+plot(seq(from=1, to=10),cv.error, type="o",xlab="polynomial degrees",ylab="test rss (k=10)")
+```
+
+We see that under cross-validation the RSS does not decrease (or increase) monotonically. The results suggest that using a three-degree polynomial would suffice. In fact the improvement in test RSS when moving from a two to a three-degree polynomial is marginal at best.
+\pagebreak
+
+d. 
+
+``` {r q3d1, echo=TRUE, warning=FALSE}
+fit=lm(nox~bs(dis,df=4),data=Boston)
+pred=predict(fit,newdata=list(dis=dis.grid),se=T)
+plot(dis,nox,col="gray")
+lines(dis.grid,pred$fit,lwd=2)
+lines(dis.grid,pred$fit+2*pred$se ,lty="dashed")
+lines(dis.grid,pred$fit-2*pred$se ,lty="dashed")
+```
+
+The bs() function in R uses a cubic spline with no intercept by default . Therefore the function begins with three degrees of freedom (df). We can either specify the number of knots we would like (then df = # of knots + 3) or the degrees of freedom and then the # of knots =  df-3. 
+
+The bs() function will also choose uniform quantiles of x as the knots if df is specified. 
+
+Since df=4, the # of knots = 1 and this will be placed at the median value of the prediction observations.
+
+``` {r q3d2}
+attr(bs(dis,df=4),"knots")
+```
+\pagebreak
+e.
+
+``` {r q3e1, warning=FALSE}
+dis.lims=range(dis)
+dis.grid = seq(from=dis.lims[1], to=dis.lims[2])
+par(mfrow=c(1,1),mar=c(4.5,4.5,1,1) ,oma=c(0,0,4,0))
+plot(dis,nox,xlim=dis.lims ,cex=.5,col="darkgrey")
+title("i-th Degrees of Freedom ",outer=T)
+names = c(3,4,5,6,7,8,9,10)
+col = rainbow(8)
+residuals = c()
+for (i in 3:10){
+        fit = lm(nox~bs(dis,df=i),data=Boston)
+        preds = predict(fit,newdata=list(dis=dis.grid),se=TRUE)
+        residuals = c(residuals,deviance(fit))
+        lines(dis.grid,preds$fit,lwd=2,col=col[i])
+}
+legend("topright",legend=names,lty=c(1,1), col=col)
+plot(seq(from=3, to=10),residuals,type="o",,xlab="df",ylab=" training rss")
+```
+
+As we increase the degrees of freedom (df) we're increasing the flexibility of the model. We'd expect the RSS to decrease as the df's increases however this is not a necessarily a good estimator of test RSS. We should utilize cross-validation or some other method to choose the appropriate degrees of freedom.
+
+QUESTION: why doesn't training error decrease monotonically as we increase df's?
+
+\pagebreak 
+
+f. 
+
+``` {r q3f1, warning=FALSE}
+set.seed(21)
+cv.error=rep(0,10)
+for (i in 3:50) {
+        fit = glm(nox~bs(dis,df=i),data=Boston)
+        cv.error[i]=cv.glm(Boston,fit,K=10)$delta[1]
+}
+plot(seq(from=3, to=50),cv.error[3:50], type="o",xlab="df",ylab=" test rss (k=10)")
+```
+
+As we let the number of degrees of freedom grow large the RSS increases significantly. We see that RSS finds a minimum at 10 degrees of freedom so let's restrict the plot to take a closer look.
+
+``` {r q3f2}
+plot(seq(from=3, to=10),cv.error[3:10], type="o",xlab="df",ylab=" test rss (k=10)")
+```
+
+While the RSS is minimized at 10 df a simpler model would probably suffice and the marginal improvement moving from 6 to 10 df is minimal so I'd choose to use a cubic spline with three knots under this analysis. 
+
+
+\pagebreak
+
+#Question 4
+
+a. 
+
+
+``` {r q4a1, echo=FALSE}
+plot(X$Bicep.Girth, Y$Gender, main="Bicep versus Gender", xlab="Bicep", ylab="Gender", pch=5)
+plot(X$Thigh.Girth, Y$Gender, main="Thigh versus Gender", xlab="Thigh", ylab="Gender", pch=5)
+plot(Y$Height, Y$Gender, main="Height versus Gender", xlab="Height", ylab="Gender", pch=5)
+```
+
+
+Looking at the documentation we see that men tend to be taller and so we can 
+assume that men are coded as 1 and women as 0 in the dataset.
+
+b.
+
+``` {r q4b1, echo=TRUE}
+n = nrow(Y)
+set.seed(100)
+train = sample(n, 307) 
+test = -train
+set.seed(100)
+data = data.frame(Y$Weight, X)
+pcr.fit=pcr(Y.Weight~., data=data, subset=train, scale=TRUE, validation="CV")
+pls.fit=plsr(Y.Weight~., data=data, subset=train, scale=TRUE, validation="CV")
+```
+
+Setting scale=TRUE has the effect of standardizing each predictor, ( using 6.6 from ISLR), prior to generating the principal components, so that the scale on which each variable is measured will not have an effect. Principal components are linear combinations of the predictors so little is gained if these aren't measurements of comparable quantities. 
+
+c.
+
+``` {r q4c1, echo=TRUE}
+summary(pcr.fit)
+summary(pls.fit)
+num.components = seq(1:21)
+pcr.var = cumsum(explvar(pcr.fit))
+pls.var = cumsum(explvar(pls.fit))
+plot(num.components, pcr.var,type="l", col="blue", main="PCR & PLSR: % of Variance Explained")
+lines(pls.var,col="red")
+legend("bottomright", legend=c("pcr.var", "plsr.var"), lty=c(1,1), col=c("blue", "red"))
+```
+
+The summary() function provides the percentage of variance explained in the predictors and in the response using different numbers of components. We can think of this as the amount of information about the predictors or the response that is captured using "n"" principal components. 
+
+We can see from the plot that variance as a function of PLSR and PLS monotically increase however PCR always outperforms PLSR. One would expect PLSR to perform better since it's a supervised learning method that relates correlation in the predictors with the response variable as well but we see that it consistently underperforms relative to PCR. 
+
+d.
+
+``` {r q4d1, echo=TRUE}
+validationplot(pcr.fit, val.type="MSEP", main="Corss Validation Error for PCR on Training Dataset", xaxt="n", ylim=c(0,100))
+axis(1,at=0:21)
+validationplot(pls.fit, val.type="MSEP", main="Cross Validation Error for PLSR on Training Dataset", xaxt="n", ylim=c(0,100))
+axis(1,at=0:21)
+```
+
+The cross-validation error approaches its minimum for both PCR and PLSR at 3 principle components. We'd like to use as simple a model as possible and the marginal improvement moving from 2 to 3 components is minimal at best but  I'll use three components moving forward.
+
+e. 
+
+Neither of these methods perform variable selection. We could use best subset but we'd have to consider 2^21 models so I compare backwards stepwise regression (since n is decently larger than p and we can start with the full model) and forward stepwise below.
+
+``` {r q4e1, echo=TRUE, warning=FALSE}
+trainingX=data[train,]
+testX=data[-train,]
+regfit.bwd=regsubsets(Y.Weight~., data=trainingX, nvmax=21, method="backward")
+regfit.fwd=regsubsets(Y.Weight~., data=trainingX, nvmax=21, method="forward")
+regfit.bwd.summary=summary(regfit.bwd)
+regfit.fwd.summary=summary(regfit.fwd)
+```
+
+``` {r q4e2, echo=FALSE}
+par(mfrow=c(2,2))
+#BIC
+plot(regfit.bwd.summary$bic ,xlab="Number of Variables ",ylab="BIC", type="l",col="blue")
+lines(regfit.fwd.summary$bic,col="red")
+legend("topright", legend=c("bwd.step", "fwd.step"), lty=c(1,1), col=c("blue", "red"))
+#AIC
+plot(regfit.bwd.summary$cp ,xlab="Number of Variables ",ylab="Mallow's Cp", type="l",col="blue")
+lines(regfit.fwd.summary$cp,col="red")
+legend("topright", legend=c("bwd.step", "fwd.step"), lty=c(1,1), col=c("blue", "red"))
+#ADJR2
+plot(regfit.bwd.summary$adjr2 ,xlab="Number of Variables ",ylab="Adjusted R^2", type="l",col="blue")
+lines(regfit.fwd.summary$adjr2,col="red")
+legend("bottomright", legend=c("bwd.step", "fwd.step"), lty=c(1,1), col=c("blue", "red"))
+#RSS
+plot(regfit.bwd.summary$rsq ,xlab="Number of Variables ",ylab="r^2", type="l",col="blue")
+lines(regfit.fwd.summary$rsq,col="red")
+legend("bottomright", legend=c("bwd.step", "fwd.step"), lty=c(1,1), col=c("blue", "red"))
+```
+
+Neither backwards and forwards seem to significantly outperform oneanother using the training data. I move forward with backward stepwise selection and now use cross-validation to determine the optimal number of predictors.
+
+``` {r q4e3, echo=TRUE}
+#prediction function
+predict.regsubsets= function(object, newdata, id, ...) {
+        form=as.formula(object$call[[2]])
+        mat=model.matrix(form, newdata)
+        coefi=coef(object, id=id)
+        xvars=names(coefi)
+        mat[,xvars] %*% coefi
+}
+
+#cross-validation
+k=10
+num.var=21
+set.seed(100)
+folds=sample(1:k, nrow(trainingX), replace=TRUE)
+folds <- sample(1:k, nrow(trainingX), replace = TRUE)
+cv.errors = matrix(NA, k, 21, dimnames = list(NULL, paste(1:21)))
+
+for(j in 1:k) {
+        best.fit <-regsubsets(Y.Weight~., data=trainingX[folds != j,], nvmax=21, method="backward")
+        for (i in 1:num.var) {
+                pred = predict(best.fit, trainingX[folds==j,], id=i)
+                cv.errors[j,i]=mean((trainingX$Y.Weight[folds==j] - pred)^2)
+        }
+}
+```
+
+The code above reports a 10×21 matrix, of which the (i, j)th element corresponds to the test MSE for the ith cross-validation fold for the best j-variable model. I use the apply() function to average over the columns of this matrix in order to obtain a vector for which the jth element is the cross-validation error for the j-variable model (ISLR, p.250).  
+
+``` {r q4e5, echo=FALSE}
+mean.cv.errors=apply(cv.errors ,2,mean)
+par(mfrow=c(1,1))
+plot(mean.cv.errors, type="b")
+##which.min(mean.cv.errors)
+points(15,mean.cv.errors[15],col="red",cex=2,pch=20)
+points(10,mean.cv.errors[15],col="blue",cex=2,pch=20)
+```
+
+Under cross-validation we see that the lowest cv error is the 15 variable model. The reduction in mean cv error moving from the 10-variable (coded in blue on the plot above) to 15-variable model is minimal so the simpler model will suffice. 
+
+I now rerun the 10-variable backward stepwise model on the training data
+
+``` {r q4e6, echo=TRUE}
+regfit.best <- regsubsets(Y.Weight ~ ., data = trainingX, nvmax = 10, method="backward")
+coef(regfit.best, 10)
+```
+\pagebreak
+
+f. 
+
+10-variable model under backward stepwise regression 
+``` {r q4f1, echo=TRUE}
+pred.bwd.10 <- rep(0, 200)
+for (i in 1:200) {
+        pred.bwd.10[i] <- predict(regfit.best, testX[i, ], id = 10)
+}
+mean((pred.bwd.10 - testX$Y.Weight)^2)
+```
+
+Principal components regression using 3 components
+``` {r q4f2, echo=TRUE}
+pred.pcr = predict(pcr.fit, newdata = data[test, ], ncomp = 3)
+mean((pred.pcr - Y$Weight[test])^2)
+```
+
+Partial Least Squares Regression using 3 components
+``` {r q4f3, echo=TRUE}
+pred.pls = predict(pls.fit, newdata = data[test, ], ncomp = 3)
+mean((pred.pls - Y$Weight[test])^2)
+```
+
+Variable selection, backward stepwise selction, does not seem to stand up to either PCR or PLSR when we apply the models to the test data. What is interesting is that PSLR performs better than PCR now, unlike in earlier results when we ran the models on the training data with cross-validation. 
+
+
+
+
+
+
+
